@@ -171,3 +171,18 @@ def test_retry_and_webhook_and_readiness_degradation(client, monkeypatch) -> Non
     finally:
         server.shutdown()
         server.server_close()
+
+
+def test_metrics_endpoint_and_fake_pdf_rejection(client) -> None:
+    metrics = client.get("/api/v1/metrics")
+    assert metrics.status_code == 200
+    assert "image_insight_http_requests_total" in metrics.text
+
+    fake_pdf_as_jpg = b"%PDF-1.7 fake"
+    resp = client.post(
+        "/api/v1/uploads",
+        headers=_auth_headers(),
+        files={"file": ("fake.jpg", fake_pdf_as_jpg, "image/jpeg")},
+    )
+    assert resp.status_code == 400
+    assert resp.json()["detail"] == "unsupported_media_type"
