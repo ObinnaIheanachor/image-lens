@@ -18,6 +18,7 @@ class Job(Base):
     image_path: Mapped[str] = mapped_column(Text)
     image_sha256: Mapped[str] = mapped_column(String(64), index=True)
     image_mime: Mapped[str] = mapped_column(String(50))
+    idempotency_key: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
     webhook_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     user_metadata_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     report_id: Mapped[str | None] = mapped_column(String(40), nullable=True)

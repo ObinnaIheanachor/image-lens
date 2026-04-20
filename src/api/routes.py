@@ -35,14 +35,34 @@ def _validate_jpeg(image_bytes: bytes) -> None:
         raise HTTPException(status_code=422, detail="image_decode_failed") from exc
 
 
-@router.post("/uploads", response_model=UploadResponse, status_code=202, dependencies=[Depends(require_api_key)])
+@router.post(
+    "/uploads",
+    response_model=UploadResponse | list[UploadResponse],
+    status_code=202,
+    dependencies=[Depends(require_api_key)],
+)
 async def upload(
-    file: UploadFile = File(...),
+    file: UploadFile | None = File(default=None),
+    files: list[UploadFile] | None = File(default=None, alias="files[]"),
+    files_alt: list[UploadFile] | None = File(default=None, alias="files"),
     webhook_url: str | None = Form(default=None),
     metadata: str | None = Form(default=None),
-) -> UploadResponse:
-    image_bytes = await file.read()
-    _validate_jpeg(image_bytes)
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+) -> UploadResponse | list[UploadResponse]:
+    upload_files: list[UploadFile] = []
+    if file is not None:
+        upload_files.append(file)
+    if files:
+        upload_files.extend(files)
+    if files_alt:
+        upload_files.extend(files_alt)
+
+    if not upload_files:
+        raise HTTPException(status_code=400, detail="empty_file")
+    if len(upload_files) > 5:
+        raise HTTPException(status_code=400, detail="too_many_files")
+    if idempotency_key and len(upload_files) > 1:
+        raise HTTPException(status_code=400, detail="idempotency_not_supported_for_batch")
 
     if webhook_url and not is_valid_webhook_url(webhook_url):
         raise HTTPException(status_code=400, detail="invalid_webhook_url")
@@ -53,31 +73,76 @@ async def upload(
         except json.JSONDecodeError as exc:
             raise HTTPException(status_code=400, detail="invalid_metadata") from exc
 
-    sha256, image_path = store.put(image_bytes, suffix=".jpg")
-
-    job = Job(
-        id=new_job_id(),
-        status="queued",
-        image_path=image_path,
-        image_sha256=sha256,
-        image_mime="image/jpeg",
-        webhook_url=webhook_url,
-        user_metadata_json=metadata,
-        attempt_count=0,
-    )
-
     session = get_session()
     try:
-        session.add(job)
-        session.commit()
-        queue_backend.enqueue(job.id)
-        session.refresh(job)
-        return UploadResponse(
-            job_id=job.id,
-            status=job.status,
-            status_url=f"/api/v1/jobs/{job.id}",
-            created_at=job.created_at,
-        )
+        responses: list[UploadResponse] = []
+
+        for index, upload_file in enumerate(upload_files):
+            image_bytes = await upload_file.read()
+            _validate_jpeg(image_bytes)
+            sha256, image_path = store.put(image_bytes, suffix=".jpg")
+
+            file_idempotency_key = idempotency_key if index == 0 else None
+            enqueue_job = True
+
+            if file_idempotency_key:
+                existing_job = (
+                    session.query(Job)
+                    .filter(Job.idempotency_key == file_idempotency_key)
+                    .order_by(Job.created_at.desc())
+                    .first()
+                )
+                if existing_job:
+                    if existing_job.image_sha256 != sha256:
+                        raise HTTPException(status_code=409, detail="idempotency_conflict")
+                    job = existing_job
+                    enqueue_job = False
+                else:
+                    job = Job(
+                        id=new_job_id(),
+                        status="queued",
+                        image_path=image_path,
+                        image_sha256=sha256,
+                        image_mime="image/jpeg",
+                        idempotency_key=file_idempotency_key,
+                        webhook_url=webhook_url,
+                        user_metadata_json=metadata,
+                        attempt_count=0,
+                    )
+                    session.add(job)
+                    session.commit()
+                    session.refresh(job)
+            else:
+                job = Job(
+                    id=new_job_id(),
+                    status="queued",
+                    image_path=image_path,
+                    image_sha256=sha256,
+                    image_mime="image/jpeg",
+                    idempotency_key=None,
+                    webhook_url=webhook_url,
+                    user_metadata_json=metadata,
+                    attempt_count=0,
+                )
+                session.add(job)
+                session.commit()
+                session.refresh(job)
+
+            if enqueue_job:
+                queue_backend.enqueue(job.id)
+
+            responses.append(
+                UploadResponse(
+                    job_id=job.id,
+                    status=job.status,
+                    status_url=f"/api/v1/jobs/{job.id}",
+                    created_at=job.created_at,
+                )
+            )
+
+        if len(responses) == 1:
+            return responses[0]
+        return responses
     finally:
         session.close()
 

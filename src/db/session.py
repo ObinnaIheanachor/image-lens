@@ -17,6 +17,7 @@ _REQUIRED_JOB_COLUMNS = {
     "image_path",
     "image_sha256",
     "image_mime",
+    "idempotency_key",
     "webhook_url",
     "user_metadata_json",
     "report_id",
@@ -42,6 +43,25 @@ def init_db() -> None:
     if not _sqlite_schema_compatible():
         Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
+    _ensure_job_schema()
+
+
+def _ensure_job_schema() -> None:
+    insp = inspect(engine)
+    if "jobs" not in insp.get_table_names():
+        return
+
+    cols = {c["name"] for c in insp.get_columns("jobs")}
+    missing_defs = []
+    if "idempotency_key" not in cols:
+        missing_defs.append(("idempotency_key", "TEXT"))
+
+    if not missing_defs:
+        return
+
+    with engine.begin() as conn:
+        for col_name, col_type in missing_defs:
+            conn.execute(text(f"ALTER TABLE jobs ADD COLUMN {col_name} {col_type}"))
 
 
 def get_session() -> Session:
