@@ -7,6 +7,7 @@ Current build includes Day 1-4 backend features with a working runtime path:
 - Local webhook callback dispatch
 - Readiness checks with dependency breakdown
 - Object store seam (`local` now, `minio` seam implemented)
+- Day 5 frontend pages (upload, job status, report view/download)
 
 ## Prereqs
 - Python 3.11+
@@ -24,11 +25,31 @@ openssl rand -hex 32
 make demo-lite
 ```
 
+Frontend UI: `http://localhost:5173`
+
+
+Default UI is end-user mode (no API key or webhook fields shown).
+
+Developer/operator controls are available only with `?mode=dev`, for example:
+- `http://localhost:5173/?mode=dev`
+
+
 ## API auth
 All core endpoints require:
 ```http
 Authorization: Bearer <API_KEY>
 ```
+
+The frontend prompts for API key and stores it in `sessionStorage` for the current tab.
+
+## Frontend pages
+- `/` Upload page (file + optional webhook URL)
+- `/jobs/:jobId` Status polling page with retry action
+- `/reports/:reportId` Report page with:
+  - HTML preview
+  - Download JSON
+  - Download Markdown
+  - Download PDF
 
 ## Core flow (curl)
 ```bash
@@ -43,6 +64,20 @@ curl -s http://localhost:8000/api/v1/jobs/<job_id> \
 
 curl -s http://localhost:8000/api/v1/reports/<report_id> \
   -H "Authorization: Bearer $API_KEY"
+
+# report formats
+curl -s http://localhost:8000/api/v1/reports/<report_id> \
+  -H "Authorization: Bearer $API_KEY" \
+  -H "Accept: text/markdown"
+
+curl -s http://localhost:8000/api/v1/reports/<report_id> \
+  -H "Authorization: Bearer $API_KEY" \
+  -H "Accept: text/html"
+
+curl -s http://localhost:8000/api/v1/reports/<report_id> \
+  -H "Authorization: Bearer $API_KEY" \
+  -H "Accept: application/pdf" \
+  -o report.pdf
 ```
 
 ## Retry flow test

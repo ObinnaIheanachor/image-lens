@@ -3,13 +3,15 @@ from __future__ import annotations
 import json
 from io import BytesIO
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, UploadFile
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Response
 from PIL import Image, UnidentifiedImageError
 
 from src.db.models import Job, Report
 from src.db.session import db_ready, get_session
 from src.domain.schemas import JobResponse, ReportResponse, UploadResponse
 from src.queue.factory import create_queue
+from src.reports.renderer import render_html, render_markdown, render_pdf
 from src.security.auth import require_api_key
 from src.services.ids import new_job_id
 from src.services.webhook_dispatcher import is_valid_webhook_url
@@ -136,20 +138,54 @@ def retry_job(job_id: str) -> JobResponse:
         session.close()
 
 
-@router.get("/reports/{report_id}", response_model=ReportResponse, dependencies=[Depends(require_api_key)])
-def get_report(report_id: str) -> ReportResponse:
+@router.get("/reports/{report_id}", dependencies=[Depends(require_api_key)])
+def get_report(report_id: str, accept: str | None = Header(default="application/json")) -> Response:
     session = get_session()
     try:
         report = session.get(Report, report_id)
         if not report:
             raise HTTPException(status_code=404, detail="report_not_found")
+        job = session.get(Job, report.job_id)
+        if not job:
+            raise HTTPException(status_code=404, detail="job_not_found")
+
         payload = json.loads(report.payload_json)
-        return ReportResponse(
+        report_json = ReportResponse(
             report_id=report.id,
             job_id=report.job_id,
             result=payload,
             created_at=report.created_at,
-        )
+        ).model_dump(mode="json")
+
+        context = {
+            "report_id": report.id,
+            "job_id": report.job_id,
+            "generated_at": report.created_at.isoformat(),
+            "image_sha256": job.image_sha256,
+            "analyzer_version": payload.get("analyzer_version", "unknown"),
+            "summary": payload.get("summary", ""),
+            "tags": payload.get("tags", []),
+            "confidence": payload.get("confidence", ""),
+        }
+
+        accepts = (accept or "application/json").lower()
+        if "application/pdf" in accepts:
+            try:
+                pdf_bytes = render_pdf(context)
+            except RuntimeError as exc:
+                raise HTTPException(status_code=503, detail=str(exc)) from exc
+            return Response(
+                content=pdf_bytes,
+                media_type="application/pdf",
+                headers={
+                    "Content-Disposition": f'attachment; filename="{report.id}.pdf"',
+                },
+            )
+        if "text/html" in accepts:
+            return HTMLResponse(content=render_html(context))
+        if "text/markdown" in accepts:
+            return PlainTextResponse(content=render_markdown(context), media_type="text/markdown")
+        return JSONResponse(content=report_json, media_type="application/json")
     finally:
         session.close()
 

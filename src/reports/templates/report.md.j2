@@ -1,0 +1,18 @@
+# Image Insight Report
+
+Generated: {{ generated_at }}
+
+- Report ID: `{{ report_id }}`
+- Job ID: `{{ job_id }}`
+- Image SHA-256: `{{ image_sha256 }}`
+- Analyzer Version: `{{ analyzer_version }}`
+
+## Summary
+{{ summary }}
+
+## Tags
+{% for tag in tags %}- {{ tag }}
+{% endfor %}
+
+## Confidence
+{{ confidence }}
