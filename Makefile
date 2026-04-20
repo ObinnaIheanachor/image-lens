@@ -15,3 +15,4 @@ warm:
 	docker pull redis:7-alpine
 	docker pull minio/minio:latest
 	docker pull mendhak/http-https-echo:35
+	docker pull node:20-alpine

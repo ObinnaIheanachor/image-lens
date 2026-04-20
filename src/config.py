@@ -28,5 +28,16 @@ class Settings(BaseModel):
     webhook_timeout_seconds: int = Field(default_factory=lambda: int(os.getenv("WEBHOOK_TIMEOUT_SECONDS", "3")))
     allow_private_webhooks: bool = Field(default_factory=lambda: os.getenv("ALLOW_PRIVATE_WEBHOOKS", "true").lower() == "true")
 
+    cors_origins_raw: str = Field(
+        default_factory=lambda: os.getenv(
+            "CORS_ORIGINS",
+            "http://localhost:5173,http://127.0.0.1:5173",
+        )
+    )
+
+    @property
+    def cors_origins(self) -> list[str]:
+        return [o.strip() for o in self.cors_origins_raw.split(",") if o.strip()]
+
 
 settings = Settings()
