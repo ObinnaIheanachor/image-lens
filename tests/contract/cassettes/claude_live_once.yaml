@@ -1,0 +1,87 @@
+interactions:
+- request:
+    body: '{"model": "claude-sonnet-4-20250514", "max_tokens": 80, "messages": [{"role":
+      "user", "content": "Return JSON: {\"ok\": true}"}]}'
+    headers:
+      Accept:
+      - '*/*'
+      Accept-Encoding:
+      - gzip, deflate, br
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '129'
+      User-Agent:
+      - python-requests/2.33.1
+      anthropic-version:
+      - '2023-06-01'
+      content-type:
+      - application/json
+    method: POST
+    uri: https://api.anthropic.com/v1/messages
+  response:
+    body:
+      string: '{"model":"claude-sonnet-4-20250514","id":"msg_01AQvDvPDbVeBHu7o9tsYpuP","type":"message","role":"assistant","content":[{"type":"text","text":"```json\n{\"ok\":
+        true}\n```"}],"stop_reason":"end_turn","stop_sequence":null,"stop_details":null,"usage":{"input_tokens":15,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0},"output_tokens":13,"service_tier":"standard","inference_geo":"not_available"}}'
+    headers:
+      CF-RAY:
+      - 9ef7cbef5f88b107-MAN
+      Connection:
+      - keep-alive
+      Content-Security-Policy:
+      - default-src 'none'; frame-ancestors 'none'
+      Content-Type:
+      - application/json
+      Date:
+      - Mon, 20 Apr 2026 23:05:57 GMT
+      Server:
+      - cloudflare
+      Transfer-Encoding:
+      - chunked
+      X-Robots-Tag:
+      - none
+      anthropic-organization-id:
+      - 09d461b8-e309-444a-95b1-8a70db01698d
+      anthropic-ratelimit-input-tokens-limit:
+      - '30000'
+      anthropic-ratelimit-input-tokens-remaining:
+      - '30000'
+      anthropic-ratelimit-input-tokens-reset:
+      - '2026-04-20T23:05:57Z'
+      anthropic-ratelimit-output-tokens-limit:
+      - '8000'
+      anthropic-ratelimit-output-tokens-remaining:
+      - '8000'
+      anthropic-ratelimit-output-tokens-reset:
+      - '2026-04-20T23:05:57Z'
+      anthropic-ratelimit-requests-limit:
+      - '50'
+      anthropic-ratelimit-requests-remaining:
+      - '49'
+      anthropic-ratelimit-requests-reset:
+      - '2026-04-20T23:05:57Z'
+      anthropic-ratelimit-tokens-limit:
+      - '38000'
+      anthropic-ratelimit-tokens-remaining:
+      - '38000'
+      anthropic-ratelimit-tokens-reset:
+      - '2026-04-20T23:05:57Z'
+      cf-cache-status:
+      - DYNAMIC
+      content-length:
+      - '484'
+      request-id:
+      - req_011CaFrumpkXyj85rLGyRMgA
+      server-timing:
+      - x-originResponse;dur=1413
+      set-cookie:
+      - _cfuvid=Lx0H4wumD5clyCdAfIN6M.J8M4yMOUjCurzn2YtX9Eg-1776726356.377526-1.0.1.1-7eZXHrWWWkus7dXNNtRJrFYIjgquTGeQo0t9JKTEKy4;
+        HttpOnly; SameSite=None; Secure; Path=/; Domain=api.anthropic.com
+      strict-transport-security:
+      - max-age=31536000; includeSubDomains; preload
+      x-envoy-upstream-service-time:
+      - '1411'
+    status:
+      code: 200
+      message: OK
+version: 1
