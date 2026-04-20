@@ -1,0 +1,32 @@
+* { box-sizing: border-box; }
+body { margin: 0; font-family: "Avenir Next", "Segoe UI", sans-serif; background: linear-gradient(135deg, #f4f7ff 0%, #fff8f3 100%); color: #102a43; }
+a { color: #0b7285; }
+
+.app-shell { min-height: 100vh; }
+.topbar { padding: 18px 24px; background: #0b1f3a; }
+.brand { color: #f8fbff; text-decoration: none; font-weight: 700; letter-spacing: 0.2px; }
+.content { max-width: 960px; margin: 24px auto; padding: 0 16px; }
+
+.panel { background: white; border-radius: 14px; border: 1px solid #dde7f0; box-shadow: 0 10px 30px rgba(15, 40, 80, 0.08); padding: 22px; }
+.panel.wide { max-width: 100%; }
+.muted { color: #486581; }
+
+.field { display: grid; gap: 8px; margin-bottom: 14px; }
+.field input { border: 1px solid #bcccdc; border-radius: 10px; padding: 10px; font-size: 14px; }
+
+.dropzone { border: 2px dashed #9fb3c8; border-radius: 12px; padding: 16px; display: grid; gap: 8px; cursor: pointer; margin-bottom: 14px; }
+.dropzone input { display: none; }
+
+button { border: 0; background: #0b7285; color: white; padding: 10px 14px; border-radius: 10px; cursor: pointer; }
+button:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 14px; }
+.error { background: #fff1f0; border: 1px solid #ffc9c5; padding: 10px; border-radius: 8px; color: #862e2e; white-space: pre-wrap; }
+
+.preview { width: 100%; min-height: 560px; border: 1px solid #d0dbe7; border-radius: 12px; background: white; }
+
+@media (max-width: 768px) {
+  .content { margin: 12px auto; }
+  .panel { padding: 16px; }
+  .preview { min-height: 420px; }
+}
