@@ -20,3 +20,6 @@ class LocalStore:
 
     def get(self, path: str) -> bytes:
         return Path(path).read_bytes()
+
+    def ready(self) -> bool:
+        return self.base_dir.exists() and self.base_dir.is_dir()
