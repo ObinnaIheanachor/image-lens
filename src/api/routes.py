@@ -10,6 +10,7 @@ from PIL import Image, UnidentifiedImageError
 from src.db.models import Job, Report
 from src.db.session import db_ready, get_session
 from src.domain.schemas import JobResponse, ReportResponse, UploadResponse
+from src.observability.metrics import JOBS_RETRY_TOTAL, UPLOADS_TOTAL, metrics_response
 from src.queue.factory import create_queue
 from src.reports.renderer import render_html, render_markdown, render_pdf
 from src.security.auth import require_api_key
@@ -26,6 +27,9 @@ queue_backend = create_queue()
 def _validate_jpeg(image_bytes: bytes) -> None:
     if len(image_bytes) == 0:
         raise HTTPException(status_code=400, detail="empty_file")
+    # Explicitly reject obvious non-JPEG payloads such as PDF/polyglot masquerades.
+    if image_bytes.startswith(b"%PDF-"):
+        raise HTTPException(status_code=400, detail="unsupported_media_type")
     try:
         img = Image.open(BytesIO(image_bytes))
         img.verify()
@@ -61,6 +65,7 @@ async def upload(
         raise HTTPException(status_code=400, detail="empty_file")
     if len(upload_files) > 5:
         raise HTTPException(status_code=400, detail="too_many_files")
+    UPLOADS_TOTAL.labels(mode="batch" if len(upload_files) > 1 else "single").inc()
     if idempotency_key and len(upload_files) > 1:
         raise HTTPException(status_code=400, detail="idempotency_not_supported_for_batch")
 
@@ -186,6 +191,7 @@ def retry_job(job_id: str) -> JobResponse:
         job.error_code = None
         job.error_message = None
         session.commit()
+        JOBS_RETRY_TOTAL.inc()
         queue_backend.enqueue(job.id)
         session.refresh(job)
 
@@ -292,3 +298,8 @@ def readyz() -> tuple[dict, int] | dict:
     if payload["status"] == "ok":
         return payload
     raise HTTPException(status_code=503, detail=payload)
+
+
+@router.get("/metrics")
+def metrics() -> Response:
+    return metrics_response()

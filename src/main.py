@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from src.api.routes import queue_backend, router
 from src.config import settings
 from src.db.session import init_db
+from src.observability.metrics import track_http_metrics
 
 
 @asynccontextmanager
@@ -33,4 +34,5 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.middleware("http")(track_http_metrics)
 app.include_router(router)
