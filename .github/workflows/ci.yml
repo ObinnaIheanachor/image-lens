@@ -7,6 +7,8 @@ on:
 jobs:
   backend:
     runs-on: ubuntu-latest
+    env:
+      CRITICAL_COVERAGE_MIN: "80"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -16,13 +18,30 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -e .
-          pip install pytest httpx pytest-cov ruff mypy
+          pip install pytest httpx pytest-cov ruff mypy vcrpy
       - name: Lint
         run: ruff check .
       - name: Type check
         run: mypy src
-      - name: Run backend tests with coverage gate
+      - name: Run backend tests with baseline coverage gate
         run: pytest -q tests
+      - name: Enforce critical module coverage gate
+        run: |
+          pytest -q tests -o addopts="" \
+            --cov=src/services \
+            --cov=src/security \
+            --cov=src/analyzers \
+            --cov=src/reports \
+            --cov-report=term-missing \
+            --cov-report=xml:coverage-critical.xml \
+            --cov-fail-under=${CRITICAL_COVERAGE_MIN}
+      - name: Upload critical coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-critical-xml
+          path: coverage-critical.xml
+      - name: Run contract tests (VCR)
+        run: pytest -q tests/contract -o addopts=""
 
   frontend:
     runs-on: ubuntu-latest
