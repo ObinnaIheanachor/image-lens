@@ -1,62 +1,81 @@
 # Image Insight
 
-Day 1-2 vertical slice implementation:
-- `POST /api/v1/uploads` accepts a JPEG and returns `202` with a `job_id`
-- Background processor asynchronously runs deterministic mock analysis
-- `GET /api/v1/jobs/{job_id}` shows `queued -> processing -> done | failed`
-- `GET /api/v1/reports/{report_id}` returns structured JSON report
+Current build includes Day 1-4 backend features with a working runtime path:
+- Authenticated upload endpoint (`Bearer API_KEY`)
+- Async job processing (`inmemory` queue now, `rq` seam implemented)
+- Retry endpoint for failed jobs
+- Local webhook callback dispatch
+- Readiness checks with dependency breakdown
+- Object store seam (`local` now, `minio` seam implemented)
 
 ## Prereqs
 - Python 3.11+
-- Docker Desktop (primary run path)
-- WeasyPrint native deps (required when PDF feature is added):
+- Docker Desktop (primary intended runtime)
+- WeasyPrint native deps (for upcoming PDF work):
   - `brew install pango cairo gdk-pixbuf libffi`
 
-## Quickstart (vertical slice)
+## Quickstart (lite)
 ```bash
 cp .env.example .env
+# regenerate API key
+openssl rand -hex 32
+# set API_KEY in .env
+
 make demo-lite
 ```
 
-API base URL: `http://localhost:${API_PORT:-8000}`
-
-## Curl flow
-```bash
-curl -s -X POST http://localhost:8000/api/v1/uploads \
-  -F "file=@tests/fixtures/valid.jpg"
-
-curl -s http://localhost:8000/api/v1/jobs/<job_id>
-
-curl -s http://localhost:8000/api/v1/reports/<report_id>
+## API auth
+All core endpoints require:
+```http
+Authorization: Bearer <API_KEY>
 ```
 
-## Provider switch (planned and documented now)
-Default in `.env.example` is:
+## Core flow (curl)
+```bash
+API_KEY=$(grep '^API_KEY=' .env | cut -d= -f2)
+
+curl -s -X POST http://localhost:8000/api/v1/uploads \
+  -H "Authorization: Bearer $API_KEY" \
+  -F "file=@tests/fixtures/valid.jpg"
+
+curl -s http://localhost:8000/api/v1/jobs/<job_id> \
+  -H "Authorization: Bearer $API_KEY"
+
+curl -s http://localhost:8000/api/v1/reports/<report_id> \
+  -H "Authorization: Bearer $API_KEY"
+```
+
+## Retry flow test
+```bash
+curl -s -X POST http://localhost:8000/api/v1/uploads \
+  -H "Authorization: Bearer $API_KEY" \
+  -F "file=@tests/fixtures/valid.jpg" \
+  -F 'metadata={"force_fail_once":true}'
+
+curl -s -X POST http://localhost:8000/api/v1/jobs/<job_id>/retry \
+  -H "Authorization: Bearer $API_KEY"
+```
+
+## Webhook test (offline)
+Use local echo service in compose:
+- `http://webhook-echo:8080` from containers
+- `http://localhost:${WEBHOOK_ECHO_PORT:-8888}` from host
+
+Upload with:
+```bash
+-F "webhook_url=http://localhost:8888/hook"
+```
+
+## Readiness
+- `GET /api/v1/healthz` -> liveness
+- `GET /api/v1/readyz` -> dependency status; returns `503` when degraded
+
+## Provider switch (documented)
+Default in `.env.example`:
 - `AI_PROVIDER=mock`
 
-To flip later:
+Planned Claude path:
 - `AI_PROVIDER=claude`
 - `ANTHROPIC_API_KEY=<your_key>`
 
-## Acceptance Criteria Progress (live)
-Implemented in this slice:
-- #3 valid upload returns `job_id` quickly (targeted)
-- #4 mock flow reaches `done` and report retrieval works in JSON
-- #12 mock provider default (offline-friendly)
-- #20 OpenAPI available at `/docs`
-
-Intentionally deferred to next phases:
-- #1 full docker-compose stack (Postgres/Redis/MinIO/worker/frontend)
-- #2 lite profile parity requirements finalization
-- #5 markdown/html/pdf report formats
-- #6 idempotency key behavior
-- #7/#8/#9 stricter validation/error matrix
-- #10 batch upload of 5
-- #11 Claude invalid-key failure surfacing
-- #13 retry endpoint
-- #14 GDPR delete behavior
-- #15 webhook delivery
-- #16 readiness dependency degradation checks
-- #17 Prometheus metrics set
-- #18/#19 full tests + lint/types/coverage + CI green
-- #21 object-store swap demo path
+See [trade-offs doc](docs/trade-offs.md) for rationale.
