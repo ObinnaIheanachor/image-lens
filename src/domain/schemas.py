@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from datetime import datetime
 from typing import Literal
 
@@ -13,7 +15,7 @@ class UploadResponse(BaseModel):
 
 class JobResponse(BaseModel):
     job_id: str
-    status: Literal["queued", "processing", "done", "failed"]
+    status: Literal["queued", "processing", "done", "failed", "deleted"]
     attempt_count: int
     report_id: str | None = None
     report_url: str | None = None

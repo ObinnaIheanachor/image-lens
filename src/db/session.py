@@ -1,4 +1,6 @@
-from sqlalchemy import create_engine
+from __future__ import annotations
+
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from src.config import settings
@@ -9,9 +11,47 @@ engine = create_engine(settings.db_url, future=True)
 SessionLocal = sessionmaker(bind=engine, class_=Session, autoflush=False, autocommit=False)
 
 
+_REQUIRED_JOB_COLUMNS = {
+    "id",
+    "status",
+    "image_path",
+    "image_sha256",
+    "image_mime",
+    "webhook_url",
+    "user_metadata_json",
+    "report_id",
+    "error_code",
+    "error_message",
+    "attempt_count",
+    "created_at",
+    "updated_at",
+}
+
+
+def _sqlite_schema_compatible() -> bool:
+    if not settings.db_url.startswith("sqlite"):
+        return True
+    insp = inspect(engine)
+    if "jobs" not in insp.get_table_names():
+        return True
+    cols = {c["name"] for c in insp.get_columns("jobs")}
+    return _REQUIRED_JOB_COLUMNS.issubset(cols)
+
+
 def init_db() -> None:
+    if not _sqlite_schema_compatible():
+        Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
 
 
 def get_session() -> Session:
     return SessionLocal()
+
+
+def db_ready() -> bool:
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        return True
+    except Exception:
+        return False
