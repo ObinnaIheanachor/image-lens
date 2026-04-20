@@ -29,7 +29,7 @@ class RQQueue:
             return False
 
 
-def create_worker() -> object:
+def create_worker() -> None:
     from rq import Worker
     redis_conn = Redis.from_url(settings.redis_url)
     worker = Worker([settings.rq_queue_name], connection=redis_conn)

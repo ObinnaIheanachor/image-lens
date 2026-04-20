@@ -1,4 +1,4 @@
-.PHONY: demo-lite demo run warm
+.PHONY: demo-lite demo run warm lint typecheck test
 
 demo-lite:
 	docker compose -f docker-compose.lite.yml up --build
@@ -8,6 +8,15 @@ demo:
 
 run:
 	uvicorn src.main:app --reload
+
+lint:
+	ruff check .
+
+typecheck:
+	mypy src
+
+test:
+	pytest -q tests
 
 warm:
 	docker pull python:3.11-slim
