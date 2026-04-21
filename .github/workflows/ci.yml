@@ -9,6 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       CRITICAL_COVERAGE_MIN: "80"
+      PYTHONPATH: .
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
