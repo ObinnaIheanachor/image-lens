@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import time
 
+from sqlalchemy.orm.exc import StaleDataError
+
 from src.analyzers.circuit_breaker import CircuitBreaker
 from src.analyzers.factory import create_analyzer
 from src.db.models import Job, Report
@@ -16,6 +18,15 @@ from src.storage.factory import create_object_store
 _analyzer = create_analyzer()
 _store = create_object_store()
 _breaker = CircuitBreaker()
+
+
+def _commit_or_recover(session, job_id: str) -> bool:
+    try:
+        session.commit()
+        return True
+    except StaleDataError:
+        session.rollback()
+        return session.get(Job, job_id) is not None
 
 
 def process_job(job_id: str) -> str:
@@ -36,7 +47,8 @@ def process_job(job_id: str) -> str:
         job.attempt_count += 1
         job.error_code = None
         job.error_message = None
-        session.commit()
+        if not _commit_or_recover(session, job_id):
+            return "skipped"
 
         image_bytes = _store.get(job.image_path)
 
@@ -82,7 +94,8 @@ def process_job(job_id: str) -> str:
 
         job.status = "done"
         job.report_id = report_id
-        session.commit()
+        if not _commit_or_recover(session, job_id):
+            return "failed"
 
         if job.webhook_url:
             payload = {
@@ -95,27 +108,29 @@ def process_job(job_id: str) -> str:
             if not ok:
                 job.error_code = "webhook_delivery_failed"
                 job.error_message = error
-                session.commit()
+                _commit_or_recover(session, job_id)
 
         return "done"
 
     except AnalyzerError as exc:
+        session.rollback()
         job = session.get(Job, job_id)
         if not job:
             return "failed"
         job.status = "failed"
         job.error_code = exc.code
         job.error_message = exc.message
-        session.commit()
+        _commit_or_recover(session, job_id)
         return "failed"
     except Exception as exc:
+        session.rollback()
         job = session.get(Job, job_id)
         if not job:
             return "failed"
         job.status = "failed"
         job.error_code = "processing_failed"
         job.error_message = str(exc)
-        session.commit()
+        _commit_or_recover(session, job_id)
         return "failed"
     finally:
         session.close()

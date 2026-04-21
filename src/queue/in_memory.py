@@ -4,6 +4,7 @@ import queue
 import threading
 import time
 
+from src.config import settings
 from src.services.analysis import process_job
 
 
@@ -23,9 +24,12 @@ class InMemoryQueue:
     def stop(self) -> None:
         self._running = False
         if self._thread and self._thread.is_alive():
-            self._thread.join(timeout=2)
+            self._thread.join()
 
     def enqueue(self, job_id: str) -> None:
+        if settings.inmemory_queue_inline:
+            process_job(job_id)
+            return
         self._q.put(job_id)
 
     def is_ready(self) -> bool:
