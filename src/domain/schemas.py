@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 
 class UploadResponse(BaseModel):
@@ -29,6 +29,11 @@ class AnalysisResult(BaseModel):
     tags: list[str]
     confidence: float
     analyzer_version: str
+
+    @field_validator("tags")
+    @classmethod
+    def cap_tags(cls, value: list[str]) -> list[str]:
+        return value[:5]
 
 
 class ReportResponse(BaseModel):

@@ -63,3 +63,27 @@ def test_claude_analyzer_falls_back_for_unstructured_text(monkeypatch) -> None:
     assert result.summary.startswith("This is freeform prose")
     assert result.tags == ["unstructured"]
     assert result.confidence == 0.5
+
+
+def test_claude_analyzer_caps_tags_to_five(monkeypatch) -> None:
+    monkeypatch.setattr(settings, "anthropic_api_key", "test-key")
+    analyzer = ClaudeVisionAnalyzer()
+
+    payload = {
+        "content": [
+            {
+                "type": "text",
+                "text": (
+                    '{"summary":"Tagged result","tags":'
+                    '["t1","t2","t3","t4","t5","t6","t7"],"confidence":0.8}'
+                ),
+            }
+        ]
+    }
+    monkeypatch.setattr(
+        "src.analyzers.claude.analyzer.requests.post",
+        lambda *args, **kwargs: _Resp(200, payload),
+    )
+
+    result = analyzer.analyze(b"abc", "image/jpeg")
+    assert result.tags == ["t1", "t2", "t3", "t4", "t5"]
