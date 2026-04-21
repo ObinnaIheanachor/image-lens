@@ -6,6 +6,7 @@ from urllib.parse import urlparse
 import requests
 
 from src.config import settings
+from src.observability.metrics import WEBHOOK_DELIVERY_TOTAL
 
 
 def is_valid_webhook_url(url: str) -> bool:
@@ -31,7 +32,10 @@ def dispatch_webhook(url: str, payload: dict) -> tuple[bool, str | None]:
             timeout=settings.webhook_timeout_seconds,
         )
         if 200 <= response.status_code < 300:
+            WEBHOOK_DELIVERY_TOTAL.labels(status="delivered").inc()
             return True, None
+        WEBHOOK_DELIVERY_TOTAL.labels(status="failed").inc()
         return False, f"webhook_http_{response.status_code}"
     except Exception as exc:
+        WEBHOOK_DELIVERY_TOTAL.labels(status="failed").inc()
         return False, str(exc)

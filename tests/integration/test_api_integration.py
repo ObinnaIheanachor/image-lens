@@ -177,6 +177,13 @@ def test_metrics_endpoint_and_fake_pdf_rejection(client) -> None:
     metrics = client.get("/api/v1/metrics")
     assert metrics.status_code == 200
     assert "image_insight_http_requests_total" in metrics.text
+    assert "image_intel_analysis_duration_seconds" in metrics.text
+    assert "image_intel_analysis_failures_total" in metrics.text
+    assert "image_intel_queue_depth" in metrics.text
+    assert "image_intel_jobs_in_flight" in metrics.text
+    assert "image_intel_circuit_breaker_state" in metrics.text
+    assert "image_intel_webhook_delivery_total" in metrics.text
+    assert "image_intel_uploads_total" in metrics.text
 
     fake_pdf_as_jpg = b"%PDF-1.7 fake"
     resp = client.post(

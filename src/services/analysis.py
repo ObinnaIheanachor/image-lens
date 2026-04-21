@@ -10,6 +10,12 @@ from src.analyzers.factory import create_analyzer
 from src.db.models import Job, Report
 from src.db.session import get_session
 from src.domain.errors import AnalyzerError
+from src.observability.metrics import (
+    ANALYSIS_DURATION_SECONDS,
+    ANALYSIS_FAILURES_TOTAL,
+    CIRCUIT_BREAKER_STATE,
+    refresh_jobs_in_flight,
+)
 from src.services.ids import new_report_id
 from src.services.webhook_dispatcher import dispatch_webhook
 from src.storage.factory import create_object_store
@@ -18,6 +24,15 @@ from src.storage.factory import create_object_store
 _analyzer = create_analyzer()
 _store = create_object_store()
 _breaker = CircuitBreaker()
+
+
+def _set_breaker_state() -> None:
+    opened_at = getattr(_breaker, "opened_at", None)
+    state = 2 if opened_at is not None else 0
+    CIRCUIT_BREAKER_STATE.labels(analyzer="default").set(state)
+
+
+_set_breaker_state()
 
 
 def _commit_or_recover(session, job_id: str) -> bool:
@@ -30,10 +45,12 @@ def _commit_or_recover(session, job_id: str) -> bool:
 
 
 def process_job(job_id: str) -> str:
+    started_at = time.perf_counter()
     session = get_session()
     try:
         job = session.get(Job, job_id)
         if not job or job.status == "deleted":
+            refresh_jobs_in_flight()
             return "skipped"
 
         if not _breaker.allow():
@@ -41,6 +58,9 @@ def process_job(job_id: str) -> str:
             job.error_code = "analyzer_circuit_open"
             job.error_message = "Circuit breaker is open"
             session.commit()
+            ANALYSIS_FAILURES_TOTAL.labels(reason="analyzer_circuit_open").inc()
+            _set_breaker_state()
+            refresh_jobs_in_flight()
             return "failed"
 
         job.status = "processing"
@@ -48,6 +68,7 @@ def process_job(job_id: str) -> str:
         job.error_code = None
         job.error_message = None
         if not _commit_or_recover(session, job_id):
+            refresh_jobs_in_flight()
             return "skipped"
 
         image_bytes = _store.get(job.image_path)
@@ -64,10 +85,12 @@ def process_job(job_id: str) -> str:
             try:
                 result = _analyzer.analyze(image_bytes, job.image_mime)
                 _breaker.record_success()
+                _set_breaker_state()
                 break
             except AnalyzerError as exc:
                 last_exc = exc
                 _breaker.record_failure()
+                _set_breaker_state()
                 if exc.code == "analyzer_auth_failed":
                     raise
                 if attempt < retries:
@@ -75,6 +98,7 @@ def process_job(job_id: str) -> str:
             except Exception as exc:
                 last_exc = exc
                 _breaker.record_failure()
+                _set_breaker_state()
                 if attempt < retries:
                     time.sleep(0.3 * (2**attempt))
 
@@ -95,6 +119,7 @@ def process_job(job_id: str) -> str:
         job.status = "done"
         job.report_id = report_id
         if not _commit_or_recover(session, job_id):
+            refresh_jobs_in_flight()
             return "failed"
 
         if job.webhook_url:
@@ -110,27 +135,41 @@ def process_job(job_id: str) -> str:
                 job.error_message = error
                 _commit_or_recover(session, job_id)
 
+        ANALYSIS_DURATION_SECONDS.observe(max(time.perf_counter() - started_at, 0.0))
+        refresh_jobs_in_flight()
         return "done"
 
     except AnalyzerError as exc:
         session.rollback()
         job = session.get(Job, job_id)
         if not job:
+            ANALYSIS_FAILURES_TOTAL.labels(reason=exc.code).inc()
+            ANALYSIS_DURATION_SECONDS.observe(max(time.perf_counter() - started_at, 0.0))
+            refresh_jobs_in_flight()
             return "failed"
         job.status = "failed"
         job.error_code = exc.code
         job.error_message = exc.message
         _commit_or_recover(session, job_id)
+        ANALYSIS_FAILURES_TOTAL.labels(reason=exc.code).inc()
+        ANALYSIS_DURATION_SECONDS.observe(max(time.perf_counter() - started_at, 0.0))
+        refresh_jobs_in_flight()
         return "failed"
     except Exception as exc:
         session.rollback()
         job = session.get(Job, job_id)
         if not job:
+            ANALYSIS_FAILURES_TOTAL.labels(reason="processing_failed").inc()
+            ANALYSIS_DURATION_SECONDS.observe(max(time.perf_counter() - started_at, 0.0))
+            refresh_jobs_in_flight()
             return "failed"
         job.status = "failed"
         job.error_code = "processing_failed"
         job.error_message = str(exc)
         _commit_or_recover(session, job_id)
+        ANALYSIS_FAILURES_TOTAL.labels(reason="processing_failed").inc()
+        ANALYSIS_DURATION_SECONDS.observe(max(time.perf_counter() - started_at, 0.0))
+        refresh_jobs_in_flight()
         return "failed"
     finally:
         session.close()

@@ -11,7 +11,14 @@ from src.db.models import Job, Report
 from src.db.session import db_ready, get_session
 from src.domain.errors import ValidationError
 from src.domain.schemas import JobResponse, ReportResponse, UploadResponse
-from src.observability.metrics import JOBS_RETRY_TOTAL, UPLOADS_TOTAL, metrics_response
+from src.observability.metrics import (
+    JOBS_RETRY_TOTAL,
+    UPLOADS_TOTAL,
+    UPLOADS_BY_STATUS_MIME_TOTAL,
+    metrics_response,
+    refresh_jobs_in_flight,
+    set_queue_depth,
+)
 from src.queue.factory import create_queue
 from src.reports.renderer import render_html, render_markdown, render_pdf
 from src.security.auth import require_api_key
@@ -25,6 +32,22 @@ from src.storage.factory import create_object_store
 router = APIRouter(prefix="/api/v1")
 store = create_object_store()
 queue_backend = create_queue()
+
+
+def _queue_name() -> str:
+    return settings.rq_queue_name if settings.queue_backend == "rq" else "inmemory"
+
+
+def _refresh_queue_metrics() -> None:
+    depth_fn = getattr(queue_backend, "depth", None)
+    if callable(depth_fn):
+        try:
+            depth = int(depth_fn())
+        except Exception:
+            depth = 0
+    else:
+        depth = 0
+    set_queue_depth(_queue_name(), depth)
 
 
 @router.post(
@@ -50,20 +73,25 @@ async def upload(
         upload_files.extend(files_alt)
 
     if not upload_files:
+        UPLOADS_BY_STATUS_MIME_TOTAL.labels(status="rejected", mime="unknown").inc()
         raise HTTPException(status_code=400, detail="empty_file")
     if len(upload_files) > 5:
+        UPLOADS_BY_STATUS_MIME_TOTAL.labels(status="rejected", mime="unknown").inc()
         raise HTTPException(status_code=400, detail="too_many_files")
     UPLOADS_TOTAL.labels(mode="batch" if len(upload_files) > 1 else "single").inc()
     if idempotency_key and len(upload_files) > 1:
+        UPLOADS_BY_STATUS_MIME_TOTAL.labels(status="rejected", mime="unknown").inc()
         raise HTTPException(status_code=400, detail="idempotency_not_supported_for_batch")
 
     if webhook_url and not is_valid_webhook_url(webhook_url):
+        UPLOADS_BY_STATUS_MIME_TOTAL.labels(status="rejected", mime="unknown").inc()
         raise HTTPException(status_code=400, detail="invalid_webhook_url")
 
     if metadata:
         try:
             json.loads(metadata)
         except json.JSONDecodeError as exc:
+            UPLOADS_BY_STATUS_MIME_TOTAL.labels(status="rejected", mime="unknown").inc()
             raise HTTPException(status_code=400, detail="invalid_metadata") from exc
 
     session = get_session()
@@ -80,6 +108,7 @@ async def upload(
                     max_height=settings.max_image_height,
                 )
             except ValidationError as exc:
+                UPLOADS_BY_STATUS_MIME_TOTAL.labels(status="rejected", mime="unknown").inc()
                 raise HTTPException(status_code=exc.status_code, detail=exc.code) from exc
 
             sha256, image_path = store.put(image_bytes, suffix=validated.suffix)
@@ -138,7 +167,9 @@ async def upload(
 
             if enqueue_job:
                 queue_backend.enqueue(job.id)
+                _refresh_queue_metrics()
 
+            UPLOADS_BY_STATUS_MIME_TOTAL.labels(status="accepted", mime=validated.mime).inc()
             responses.append(
                 UploadResponse(
                     job_id=job.id,
@@ -149,7 +180,9 @@ async def upload(
             )
 
         if len(responses) == 1:
+            refresh_jobs_in_flight()
             return responses[0]
+        refresh_jobs_in_flight()
         return responses
     finally:
         session.close()
@@ -196,6 +229,7 @@ def retry_job(job_id: str) -> JobResponse:
         session.commit()
         JOBS_RETRY_TOTAL.inc()
         queue_backend.enqueue(job.id)
+        _refresh_queue_metrics()
         session.refresh(job)
 
         return JobResponse(
@@ -302,6 +336,8 @@ def readyz() -> tuple[dict, int] | dict:
     queue_ok = queue_backend.is_ready()
     store_ok = store.ready()
     db_ok = db_ready()
+    _refresh_queue_metrics()
+    refresh_jobs_in_flight()
 
     payload = {
         "status": "ok" if (queue_ok and store_ok and db_ok) else "degraded",
@@ -319,6 +355,8 @@ def readyz() -> tuple[dict, int] | dict:
 
 @router.get("/metrics")
 def metrics() -> Response:
+    _refresh_queue_metrics()
+    refresh_jobs_in_flight()
     return metrics_response()
 
 

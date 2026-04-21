@@ -28,6 +28,9 @@ class RQQueue:
         except Exception:
             return False
 
+    def depth(self) -> int:
+        return int(self._queue.count)
+
 
 def create_worker() -> None:
     from rq import Worker

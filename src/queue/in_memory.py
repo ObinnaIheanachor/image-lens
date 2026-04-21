@@ -35,6 +35,9 @@ class InMemoryQueue:
     def is_ready(self) -> bool:
         return True
 
+    def depth(self) -> int:
+        return self._q.qsize()
+
     def _loop(self) -> None:
         while self._running:
             try:
