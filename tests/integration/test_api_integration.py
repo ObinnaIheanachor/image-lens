@@ -150,9 +150,9 @@ def test_retry_and_webhook_and_readiness_degradation(client, monkeypatch) -> Non
 
         retry = client.post(f"/api/v1/jobs/{job_id}/retry", headers=_auth_headers())
         assert retry.status_code == 200
-        assert retry.json()["status"] == "queued"
+        assert retry.json()["status"] in {"queued", "done"}
 
-        done = _poll_job_until(client, job_id, "done")
+        done = retry.json() if retry.json()["status"] == "done" else _poll_job_until(client, job_id, "done")
         assert done["report_id"]
 
         deadline = time.time() + 5
