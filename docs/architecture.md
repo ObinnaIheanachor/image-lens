@@ -28,7 +28,7 @@ Browser (React/Vite)
 ## Core flow
 
 1. Upload request hits `POST /api/v1/uploads`.
-2. File is validated as JPEG and stored via object-store abstraction.
+2. File is validated via magic-byte and decode checks (JPEG/PNG/WebP/HEIC) and stored via object-store abstraction.
 3. Job is persisted (`jobs` table) and queued.
 4. Worker processes job, writes report (`reports` table).
 5. Client polls `GET /jobs/{id}` until done.

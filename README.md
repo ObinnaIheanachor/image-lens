@@ -54,7 +54,7 @@ All core endpoints require:
 Authorization: Bearer <API_KEY>
 ```
 
-The frontend prompts for API key and stores it in `sessionStorage` for the current tab.
+In default end-user mode, frontend uses configured key flow; explicit API key input is shown in `?mode=dev` and stored in `sessionStorage` for the current tab.
 
 ## Database migrations (Alembic)
 Schema lifecycle is migration-driven for Postgres.
