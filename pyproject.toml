@@ -16,6 +16,7 @@ dependencies = [
   "python-multipart>=0.0.9",
   "pillow>=10.4.0",
   "requests>=2.32.0",
+  "structlog>=24.4.0",
   "redis>=5.2.0",
   "rq>=1.16.2",
   "minio>=7.2.12",

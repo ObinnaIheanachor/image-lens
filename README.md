@@ -119,6 +119,13 @@ Upload with:
 - `GET /api/v1/healthz` -> liveness
 - `GET /api/v1/readyz` -> dependency status; returns `503` when degraded
 
+## Runtime hardening
+- Upload rate limiting is enabled by default (`RATE_LIMIT_ENABLED=true`) and uses Redis when available.
+- Structured JSON logging is enabled via `structlog` for request/access logs.
+- Operational sweepers run as background tasks:
+  - stuck-job reconciler (`STUCK_JOB_TIMEOUT_SECONDS`)
+  - retention hard-delete sweeper (`RETENTION_HARD_DELETE_DAYS`)
+
 ## Provider switch (documented)
 Default in `.env.example`:
 - `AI_PROVIDER=mock`
