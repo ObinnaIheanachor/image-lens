@@ -8,7 +8,7 @@ jobs:
   backend:
     runs-on: ubuntu-latest
     env:
-      CRITICAL_COVERAGE_MIN: "70"
+      CRITICAL_COVERAGE_MIN: "80"
       PYTHONPATH: .
     steps:
       - uses: actions/checkout@v4
