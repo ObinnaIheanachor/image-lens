@@ -15,6 +15,7 @@ from src.observability.metrics import JOBS_RETRY_TOTAL, UPLOADS_TOTAL, metrics_r
 from src.queue.factory import create_queue
 from src.reports.renderer import render_html, render_markdown, render_pdf
 from src.security.auth import require_api_key
+from src.security.rate_limit import enforce_upload_rate_limit
 from src.security.validation import validate_image_bytes
 from src.services.ids import new_job_id
 from src.services.webhook_dispatcher import is_valid_webhook_url
@@ -30,7 +31,7 @@ queue_backend = create_queue()
     "/uploads",
     response_model=UploadResponse | list[UploadResponse],
     status_code=202,
-    dependencies=[Depends(require_api_key)],
+    dependencies=[Depends(require_api_key), Depends(enforce_upload_rate_limit)],
 )
 async def upload(
     file: UploadFile | None = File(default=None),
