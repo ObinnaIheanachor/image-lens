@@ -63,7 +63,7 @@ export default function UploadPage() {
   return (
     <section className="panel">
       <h1>Upload Image</h1>
-      <p className="muted">Upload a JPEG and start asynchronous analysis.</p>
+      <p className="muted">Upload a JPEG, PNG, WebP, or HEIC image and start asynchronous analysis.</p>
 
       {devMode ? (
         <>
@@ -84,7 +84,7 @@ export default function UploadPage() {
         <input
           id="upload-input"
           type="file"
-          accept="image/jpeg"
+          accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.jpg,.jpeg,.png,.webp,.heic,.heif"
           onChange={(e) => setFile(e.target.files?.[0] || null)}
         />
         <strong>Drag and drop or click to select</strong>

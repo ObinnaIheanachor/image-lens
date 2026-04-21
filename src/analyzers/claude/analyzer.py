@@ -1,12 +1,83 @@
 from __future__ import annotations
 
+import base64
 import json
+import re
+from typing import Any
 
 import requests
 
 from src.config import settings
 from src.domain.errors import AnalyzerError
 from src.domain.schemas import AnalysisResult
+
+
+_FENCED_JSON_RE = re.compile(r"```(?:json)?\s*(.*?)```", re.IGNORECASE | re.DOTALL)
+
+
+def _extract_json_candidate(text: str) -> Any | None:
+    cleaned = text.strip()
+    if not cleaned:
+        return None
+
+    # First try direct parse.
+    try:
+        return json.loads(cleaned)
+    except Exception:
+        pass
+
+    # Then parse fenced JSON blocks.
+    fenced_match = _FENCED_JSON_RE.search(cleaned)
+    if fenced_match:
+        fenced_body = fenced_match.group(1).strip()
+        try:
+            return json.loads(fenced_body)
+        except Exception:
+            pass
+
+    # Finally, decode first JSON object/array embedded in prose.
+    decoder = json.JSONDecoder()
+    for idx, ch in enumerate(cleaned):
+        if ch not in "{[":
+            continue
+        try:
+            parsed, _ = decoder.raw_decode(cleaned[idx:])
+            return parsed
+        except Exception:
+            continue
+    return None
+
+
+def _normalize_result(parsed: Any, fallback_text: str, version: str) -> AnalysisResult:
+    if not isinstance(parsed, dict):
+        parsed = {}
+
+    summary = parsed.get("summary")
+    tags = parsed.get("tags")
+    confidence = parsed.get("confidence")
+
+    final_summary = str(summary).strip() if summary is not None else ""
+    if not final_summary:
+        final_summary = (fallback_text.strip() or "No summary")[:500]
+
+    final_tags: list[str] = []
+    if isinstance(tags, list):
+        final_tags = [str(tag).strip() for tag in tags if str(tag).strip()][:10]
+    if not final_tags:
+        final_tags = ["unstructured"]
+
+    try:
+        final_confidence = float(confidence)
+    except Exception:
+        final_confidence = 0.5
+    final_confidence = min(max(final_confidence, 0.0), 1.0)
+
+    return AnalysisResult(
+        summary=final_summary,
+        tags=final_tags,
+        confidence=final_confidence,
+        analyzer_version=version,
+    )
 
 
 class ClaudeVisionAnalyzer:
@@ -34,18 +105,15 @@ class ClaudeVisionAnalyzer:
                         {
                             "type": "text",
                             "text": (
-                                "Return compact JSON with keys: summary (string), tags (array of strings), "
-                                "confidence (0..1)."
+                                "Return ONLY a raw JSON object with keys: summary (string), "
+                                "tags (array of strings), confidence (number 0..1). "
+                                "Do not include markdown fences or commentary."
                             ),
                         },
                     ],
                 }
             ],
         }
-
-        # Anthropic expects base64; convert hex payload to base64 bytes without external deps.
-        # requests/json handles content body, endpoint validates auth and model path.
-        import base64
 
         payload["messages"][0]["content"][0]["source"]["data"] = base64.b64encode(image_bytes).decode("ascii")  # type: ignore[index]
 
@@ -73,16 +141,6 @@ class ClaudeVisionAnalyzer:
         data = resp.json()
         text_blocks = [c.get("text", "") for c in data.get("content", []) if c.get("type") == "text"]
         text = "\n".join(text_blocks).strip()
+        parsed = _extract_json_candidate(text)
 
-        try:
-            parsed = json.loads(text)
-        except Exception:
-            # Fallback when model returns prose.
-            parsed = {"summary": text[:500], "tags": ["unstructured"], "confidence": 0.5}
-
-        return AnalysisResult(
-            summary=str(parsed.get("summary", "No summary")),
-            tags=[str(t) for t in parsed.get("tags", ["unknown"])][:10],
-            confidence=float(parsed.get("confidence", 0.5)),
-            analyzer_version=self.version,
-        )
+        return _normalize_result(parsed, text, self.version)
