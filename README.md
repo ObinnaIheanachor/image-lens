@@ -8,6 +8,7 @@ Current build includes Day 1-4 backend features with a working runtime path:
 - Readiness checks with dependency breakdown
 - Object store seam (`local` now, `minio` seam implemented)
 - Day 5 frontend pages (upload, job status, report view/download)
+- Recent uploads panel on the upload screen (backed by cursor endpoint)
 
 ## Prereqs
 - Python 3.11+
@@ -42,8 +43,21 @@ Authorization: Bearer <API_KEY>
 
 The frontend prompts for API key and stores it in `sessionStorage` for the current tab.
 
+## Database migrations (Alembic)
+Schema lifecycle is migration-driven for Postgres.
+
+Compose runs migrations automatically before API startup:
+- `alembic upgrade head && uvicorn ...`
+
+Manual commands:
+```bash
+make migrate-up
+make migrate-current
+```
+
 ## Frontend pages
 - `/` Upload page (file + optional webhook URL)
+- `/` includes a recent uploads panel (latest completed jobs/reports)
 - `/jobs/:jobId` Status polling page with retry action
 - `/reports/:reportId` Report page with:
   - HTML preview

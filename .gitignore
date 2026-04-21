@@ -6,6 +6,9 @@ __pycache__/
 .venv/
 .env
 app.db
+test_app.db
+*.sqlite
+*.sqlite3
 data/
 
 *.egg-info/

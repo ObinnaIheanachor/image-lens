@@ -30,6 +30,19 @@ export type ReportResponse = {
   created_at: string
 }
 
+export type RecentUploadItem = {
+  job_id: string
+  status: string
+  report_id: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type RecentUploadsResponse = {
+  items: RecentUploadItem[]
+  next_cursor: string | null
+}
+
 function headers(apiKey: string, accept?: string): HeadersInit {
   const h: HeadersInit = {
     Authorization: `Bearer ${apiKey}`,
@@ -107,4 +120,19 @@ export async function downloadReport(apiKey: string, reportId: string, accept: s
   a.click()
   a.remove()
   URL.revokeObjectURL(url)
+}
+
+export async function listRecentUploads(
+  apiKey: string,
+  limit = 10,
+  cursor?: string,
+): Promise<RecentUploadsResponse> {
+  const params = new URLSearchParams({ limit: String(limit) })
+  if (cursor) params.set('cursor', cursor)
+
+  const resp = await fetch(`${API_BASE}/api/v1/reports?${params.toString()}`, {
+    headers: headers(apiKey, 'application/json'),
+  })
+  if (!resp.ok) return parseError(resp)
+  return resp.json()
 }

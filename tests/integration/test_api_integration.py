@@ -184,5 +184,5 @@ def test_metrics_endpoint_and_fake_pdf_rejection(client) -> None:
         headers=_auth_headers(),
         files={"file": ("fake.jpg", fake_pdf_as_jpg, "image/jpeg")},
     )
-    assert resp.status_code == 400
+    assert resp.status_code == 415
     assert resp.json()["detail"] == "unsupported_media_type"

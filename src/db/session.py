@@ -17,6 +17,9 @@ _REQUIRED_JOB_COLUMNS = {
     "image_path",
     "image_sha256",
     "image_mime",
+    "image_bytes",
+    "image_width",
+    "image_height",
     "idempotency_key",
     "webhook_url",
     "user_metadata_json",
@@ -40,10 +43,17 @@ def _sqlite_schema_compatible() -> bool:
 
 
 def init_db() -> None:
+    # Postgres schema lifecycle is migration-driven (Alembic).
+    if settings.db_url.startswith("postgresql"):
+        _ensure_job_schema()
+        _ensure_report_schema()
+        return
+
     if not _sqlite_schema_compatible():
         Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
     _ensure_job_schema()
+    _ensure_report_schema()
 
 
 def _ensure_job_schema() -> None:
@@ -55,6 +65,12 @@ def _ensure_job_schema() -> None:
     missing_defs = []
     if "idempotency_key" not in cols:
         missing_defs.append(("idempotency_key", "TEXT"))
+    if "image_bytes" not in cols:
+        missing_defs.append(("image_bytes", "INTEGER"))
+    if "image_width" not in cols:
+        missing_defs.append(("image_width", "INTEGER"))
+    if "image_height" not in cols:
+        missing_defs.append(("image_height", "INTEGER"))
 
     if not missing_defs:
         return
@@ -62,6 +78,15 @@ def _ensure_job_schema() -> None:
     with engine.begin() as conn:
         for col_name, col_type in missing_defs:
             conn.execute(text(f"ALTER TABLE jobs ADD COLUMN {col_name} {col_type}"))
+
+
+def _ensure_report_schema() -> None:
+    insp = inspect(engine)
+    if "reports" not in insp.get_table_names():
+        return
+    if settings.db_url.startswith("postgresql"):
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE reports ALTER COLUMN payload_json DROP NOT NULL"))
 
 
 def get_session() -> Session:

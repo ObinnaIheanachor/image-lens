@@ -11,5 +11,8 @@ class UnavailableObjectStore:
     def get(self, path: str) -> bytes:
         raise RuntimeError(f"object_store_unavailable: {self.reason}")
 
+    def delete(self, path: str) -> None:
+        raise RuntimeError(f"object_store_unavailable: {self.reason}")
+
     def ready(self) -> bool:
         return False

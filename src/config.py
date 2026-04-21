@@ -9,6 +9,11 @@ from pydantic import BaseModel, Field
 class Settings(BaseModel):
     app_name: str = "Image Insight"
     api_key: str = Field(default_factory=lambda: os.getenv("API_KEY", "changeme-before-deploy"))
+    ai_provider: str = Field(default_factory=lambda: os.getenv("AI_PROVIDER", "mock"))
+    anthropic_api_key: str = Field(default_factory=lambda: os.getenv("ANTHROPIC_API_KEY", ""))
+    claude_model: str = Field(
+        default_factory=lambda: os.getenv("CLAUDE_MODEL", "claude-sonnet-4-20250514")
+    )
 
     db_url: str = Field(default_factory=lambda: os.getenv("DATABASE_URL", "sqlite:///./app.db"))
     storage_dir: Path = Field(default_factory=lambda: Path(os.getenv("STORAGE_DIR", "./data/storage")))
@@ -27,6 +32,11 @@ class Settings(BaseModel):
     job_timeout_seconds: int = Field(default_factory=lambda: int(os.getenv("JOB_TIMEOUT_SECONDS", "60")))
     webhook_timeout_seconds: int = Field(default_factory=lambda: int(os.getenv("WEBHOOK_TIMEOUT_SECONDS", "3")))
     allow_private_webhooks: bool = Field(default_factory=lambda: os.getenv("ALLOW_PRIVATE_WEBHOOKS", "true").lower() == "true")
+    max_upload_size_bytes: int = Field(
+        default_factory=lambda: int(os.getenv("MAX_UPLOAD_SIZE_BYTES", str(20 * 1024 * 1024)))
+    )
+    max_image_width: int = Field(default_factory=lambda: int(os.getenv("MAX_IMAGE_WIDTH", "10000")))
+    max_image_height: int = Field(default_factory=lambda: int(os.getenv("MAX_IMAGE_HEIGHT", "10000")))
 
     cors_origins_raw: str = Field(
         default_factory=lambda: os.getenv(

@@ -24,6 +24,8 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
 .error { background: #fff1f0; border: 1px solid #ffc9c5; padding: 10px; border-radius: 8px; color: #862e2e; white-space: pre-wrap; }
 
 .preview { width: 100%; min-height: 560px; border: 1px solid #d0dbe7; border-radius: 12px; background: white; }
+.recent-list { margin: 8px 0 0; padding-left: 18px; }
+.recent-list li { margin: 6px 0; }
 
 @media (max-width: 768px) {
   .content { margin: 12px auto; }

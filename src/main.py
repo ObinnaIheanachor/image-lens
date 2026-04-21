@@ -7,6 +7,7 @@ from src.api.routes import queue_backend, router
 from src.config import settings
 from src.db.session import init_db
 from src.observability.metrics import track_http_metrics
+from src.observability.tracing import attach_trace_id
 
 
 @asynccontextmanager
@@ -35,4 +36,5 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.middleware("http")(track_http_metrics)
+app.middleware("http")(attach_trace_id)
 app.include_router(router)

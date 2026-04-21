@@ -18,6 +18,9 @@ class Job(Base):
     image_path: Mapped[str] = mapped_column(Text)
     image_sha256: Mapped[str] = mapped_column(String(64), index=True)
     image_mime: Mapped[str] = mapped_column(String(50))
+    image_bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    image_width: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    image_height: Mapped[int | None] = mapped_column(Integer, nullable=True)
     idempotency_key: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
     webhook_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     user_metadata_json: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -40,7 +43,7 @@ class Report(Base):
 
     id: Mapped[str] = mapped_column(String(40), primary_key=True)
     job_id: Mapped[str] = mapped_column(String(40), index=True)
-    payload_json: Mapped[str] = mapped_column(Text)
+    payload_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )

@@ -28,7 +28,7 @@ class MinioObjectStore:
             key,
             BytesIO(data),
             length=len(data),
-            content_type="image/jpeg",
+            content_type="application/octet-stream",
         )
         return digest, key
 
@@ -39,6 +39,12 @@ class MinioObjectStore:
         finally:
             response.close()
             response.release_conn()
+
+    def delete(self, path: str) -> None:
+        try:
+            self._client.remove_object(self._bucket, path)
+        except Exception:
+            return
 
     def ready(self) -> bool:
         try:

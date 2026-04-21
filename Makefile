@@ -1,4 +1,4 @@
-.PHONY: demo-lite demo run warm lint typecheck test
+.PHONY: demo-lite demo run warm lint typecheck test migrate-up migrate-current
 
 demo-lite:
 	docker compose -f docker-compose.lite.yml up --build
@@ -17,6 +17,12 @@ typecheck:
 
 test:
 	pytest -q tests
+
+migrate-up:
+	alembic upgrade head
+
+migrate-current:
+	alembic current
 
 warm:
 	docker pull python:3.11-slim

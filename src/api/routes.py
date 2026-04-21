@@ -1,19 +1,21 @@
 from __future__ import annotations
 
 import json
-from io import BytesIO
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Response
-from PIL import Image, UnidentifiedImageError
 
+from src.config import settings
 from src.db.models import Job, Report
 from src.db.session import db_ready, get_session
+from src.domain.errors import ValidationError
 from src.domain.schemas import JobResponse, ReportResponse, UploadResponse
 from src.observability.metrics import JOBS_RETRY_TOTAL, UPLOADS_TOTAL, metrics_response
 from src.queue.factory import create_queue
 from src.reports.renderer import render_html, render_markdown, render_pdf
 from src.security.auth import require_api_key
+from src.security.validation import validate_image_bytes
 from src.services.ids import new_job_id
 from src.services.webhook_dispatcher import is_valid_webhook_url
 from src.storage.factory import create_object_store
@@ -22,21 +24,6 @@ from src.storage.factory import create_object_store
 router = APIRouter(prefix="/api/v1")
 store = create_object_store()
 queue_backend = create_queue()
-
-
-def _validate_jpeg(image_bytes: bytes) -> None:
-    if len(image_bytes) == 0:
-        raise HTTPException(status_code=400, detail="empty_file")
-    # Explicitly reject obvious non-JPEG payloads such as PDF/polyglot masquerades.
-    if image_bytes.startswith(b"%PDF-"):
-        raise HTTPException(status_code=400, detail="unsupported_media_type")
-    try:
-        img = Image.open(BytesIO(image_bytes))
-        img.verify()
-        if img.format != "JPEG":
-            raise HTTPException(status_code=400, detail="unsupported_media_type")
-    except UnidentifiedImageError as exc:
-        raise HTTPException(status_code=422, detail="image_decode_failed") from exc
 
 
 @router.post(
@@ -84,8 +71,17 @@ async def upload(
 
         for index, upload_file in enumerate(upload_files):
             image_bytes = await upload_file.read()
-            _validate_jpeg(image_bytes)
-            sha256, image_path = store.put(image_bytes, suffix=".jpg")
+            try:
+                validated = validate_image_bytes(
+                    image_bytes,
+                    max_size_bytes=settings.max_upload_size_bytes,
+                    max_width=settings.max_image_width,
+                    max_height=settings.max_image_height,
+                )
+            except ValidationError as exc:
+                raise HTTPException(status_code=exc.status_code, detail=exc.code) from exc
+
+            sha256, image_path = store.put(image_bytes, suffix=validated.suffix)
 
             file_idempotency_key = idempotency_key if index == 0 else None
             enqueue_job = True
@@ -108,7 +104,10 @@ async def upload(
                         status="queued",
                         image_path=image_path,
                         image_sha256=sha256,
-                        image_mime="image/jpeg",
+                        image_mime=validated.mime,
+                        image_bytes=validated.size_bytes,
+                        image_width=validated.width,
+                        image_height=validated.height,
                         idempotency_key=file_idempotency_key,
                         webhook_url=webhook_url,
                         user_metadata_json=metadata,
@@ -123,7 +122,10 @@ async def upload(
                     status="queued",
                     image_path=image_path,
                     image_sha256=sha256,
-                    image_mime="image/jpeg",
+                    image_mime=validated.mime,
+                    image_bytes=validated.size_bytes,
+                    image_width=validated.width,
+                    image_height=validated.height,
                     idempotency_key=None,
                     webhook_url=webhook_url,
                     user_metadata_json=metadata,
@@ -220,6 +222,8 @@ def get_report(report_id: str, accept: str | None = Header(default="application/
         if not job:
             raise HTTPException(status_code=404, detail="job_not_found")
 
+        if not report.payload_json:
+            raise HTTPException(status_code=410, detail="report_deleted")
         payload = json.loads(report.payload_json)
         report_json = ReportResponse(
             report_id=report.id,
@@ -268,6 +272,18 @@ def delete_job(job_id: str) -> dict[str, str]:
         job = session.get(Job, job_id)
         if not job:
             raise HTTPException(status_code=404, detail="job_not_found")
+
+        try:
+            store.delete(job.image_path)
+        except Exception:
+            # Best-effort delete while preserving request semantics.
+            pass
+
+        if job.report_id:
+            report = session.get(Report, job.report_id)
+            if report:
+                report.payload_json = None
+
         job.status = "deleted"
         session.commit()
         return {"status": "deleted", "job_id": job.id}
@@ -303,3 +319,36 @@ def readyz() -> tuple[dict, int] | dict:
 @router.get("/metrics")
 def metrics() -> Response:
     return metrics_response()
+
+
+@router.get("/reports", dependencies=[Depends(require_api_key)])
+def list_reports(limit: int = 20, cursor: str | None = None) -> dict:
+    session = get_session()
+    try:
+        safe_limit = min(max(limit, 1), 100)
+        query = session.query(Job).filter(Job.report_id.isnot(None)).order_by(Job.created_at.desc())
+        if cursor:
+            try:
+                cursor_dt = datetime.fromisoformat(cursor)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail="invalid_cursor") from exc
+            query = query.filter(Job.created_at < cursor_dt)
+
+        rows = query.limit(safe_limit + 1).all()
+        has_more = len(rows) > safe_limit
+        rows = rows[:safe_limit]
+
+        items = [
+            {
+                "job_id": r.id,
+                "status": r.status,
+                "report_id": r.report_id,
+                "created_at": r.created_at.isoformat(),
+                "updated_at": r.updated_at.isoformat(),
+            }
+            for r in rows
+        ]
+        next_cursor = rows[-1].created_at.isoformat() if has_more and rows else None
+        return {"items": items, "next_cursor": next_cursor}
+    finally:
+        session.close()

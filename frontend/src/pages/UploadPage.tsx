@@ -1,7 +1,8 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useLocation, useNavigate } from 'react-router-dom'
 import ApiKeyInput from '../components/ApiKeyInput'
-import { uploadImage } from '../api'
+import { listRecentUploads, uploadImage, type RecentUploadItem } from '../api'
 import { isDevMode, persistApiKey, resolveApiKey } from '../runtime'
 
 export default function UploadPage() {
@@ -14,8 +15,18 @@ export default function UploadPage() {
   const [file, setFile] = useState<File | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [recent, setRecent] = useState<RecentUploadItem[]>([])
 
   const fileName = useMemo(() => file?.name || 'No file selected', [file])
+
+  const loadRecent = async (currentApiKey: string) => {
+    try {
+      const payload = await listRecentUploads(currentApiKey, 8)
+      setRecent(payload.items)
+    } catch {
+      setRecent([])
+    }
+  }
 
   const onSubmit = async () => {
     setError('')
@@ -32,6 +43,7 @@ export default function UploadPage() {
     try {
       persistApiKey(apiKey)
       const uploaded = await uploadImage(apiKey, file, devMode ? (webhookUrl || undefined) : undefined)
+      void loadRecent(apiKey)
       navigate(`/jobs/${uploaded.job_id}${devMode ? '?mode=dev' : ''}`)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Upload failed')
@@ -39,6 +51,14 @@ export default function UploadPage() {
       setBusy(false)
     }
   }
+
+  useEffect(() => {
+    if (!apiKey) {
+      setRecent([])
+      return
+    }
+    void loadRecent(apiKey)
+  }, [apiKey])
 
   return (
     <section className="panel">
@@ -78,6 +98,27 @@ export default function UploadPage() {
       </button>
 
       {devMode ? <p className="muted dev-note">Developer controls enabled.</p> : null}
+
+      <h2>Recent Uploads</h2>
+      {recent.length === 0 ? (
+        <p className="muted">No completed uploads yet.</p>
+      ) : (
+        <ul className="recent-list">
+          {recent.map((item) => (
+            <li key={item.job_id}>
+              <Link to={`/jobs/${item.job_id}${devMode ? '?mode=dev' : ''}`}>{item.job_id}</Link>
+              {' · '}
+              {item.status}
+              {item.report_id ? (
+                <>
+                  {' · '}
+                  <Link to={`/reports/${item.report_id}${devMode ? '?mode=dev' : ''}`}>report</Link>
+                </>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      )}
     </section>
   )
 }

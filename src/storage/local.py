@@ -21,5 +21,10 @@ class LocalStore:
     def get(self, path: str) -> bytes:
         return Path(path).read_bytes()
 
+    def delete(self, path: str) -> None:
+        p = Path(path)
+        if p.exists():
+            p.unlink()
+
     def ready(self) -> bool:
         return self.base_dir.exists() and self.base_dir.is_dir()
